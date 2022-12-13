@@ -110,6 +110,9 @@ import (
 	arkeomodule "arkeo/x/arkeo"
 	arkeomodulekeeper "arkeo/x/arkeo/keeper"
 	arkeomoduletypes "arkeo/x/arkeo/types"
+	crosstransfermodule "arkeo/x/crosstransfer"
+	crosstransfermodulekeeper "arkeo/x/crosstransfer/keeper"
+	crosstransfermoduletypes "arkeo/x/crosstransfer/types"
 	// this line is used by starport scaffolding # stargate/app/moduleImport
 )
 
@@ -166,6 +169,7 @@ var (
 		ica.AppModuleBasic{},
 		vesting.AppModuleBasic{},
 		arkeomodule.AppModuleBasic{},
+		crosstransfermodule.AppModuleBasic{},
 		// this line is used by starport scaffolding # stargate/app/moduleBasic
 	)
 
@@ -244,7 +248,9 @@ type App struct {
 	ScopedTransferKeeper capabilitykeeper.ScopedKeeper
 	ScopedICAHostKeeper  capabilitykeeper.ScopedKeeper
 
-	ArkeoKeeper arkeomodulekeeper.Keeper
+	ArkeoKeeper               arkeomodulekeeper.Keeper
+	ScopedCrosstransferKeeper capabilitykeeper.ScopedKeeper
+	CrosstransferKeeper       crosstransfermodulekeeper.Keeper
 	// this line is used by starport scaffolding # stargate/app/keeperDeclaration
 
 	// mm is the module manager
@@ -283,6 +289,7 @@ func New(
 		paramstypes.StoreKey, ibchost.StoreKey, upgradetypes.StoreKey, feegrant.StoreKey, evidencetypes.StoreKey,
 		ibctransfertypes.StoreKey, icahosttypes.StoreKey, capabilitytypes.StoreKey, group.StoreKey,
 		arkeomoduletypes.StoreKey,
+		crosstransfermoduletypes.StoreKey,
 		// this line is used by starport scaffolding # stargate/app/storeKey
 	)
 	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -503,12 +510,27 @@ func New(
 	)
 	arkeoModule := arkeomodule.NewAppModule(appCodec, app.ArkeoKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper)
 
+	scopedCrosstransferKeeper := app.CapabilityKeeper.ScopeToModule(crosstransfermoduletypes.ModuleName)
+	app.ScopedCrosstransferKeeper = scopedCrosstransferKeeper
+	app.CrosstransferKeeper = *crosstransfermodulekeeper.NewKeeper(
+		appCodec,
+		keys[crosstransfermoduletypes.StoreKey],
+		keys[crosstransfermoduletypes.MemStoreKey],
+		app.GetSubspace(crosstransfermoduletypes.ModuleName),
+		app.IBCKeeper.ChannelKeeper,
+		&app.IBCKeeper.PortKeeper,
+		scopedCrosstransferKeeper,
+	)
+	crosstransferModule := crosstransfermodule.NewAppModule(appCodec, app.CrosstransferKeeper, app.AccountKeeper, app.BankKeeper)
+
+	crosstransferIBCModule := crosstransfermodule.NewIBCModule(app.CrosstransferKeeper)
 	// this line is used by starport scaffolding # stargate/app/keeperDefinition
 
 	// Create static IBC router, add transfer route, then set and seal it
 	ibcRouter := ibcporttypes.NewRouter()
 	ibcRouter.AddRoute(icahosttypes.SubModuleName, icaHostIBCModule).
 		AddRoute(ibctransfertypes.ModuleName, transferIBCModule)
+	ibcRouter.AddRoute(crosstransfermoduletypes.ModuleName, crosstransferIBCModule)
 	// this line is used by starport scaffolding # ibc/app/router
 	app.IBCKeeper.SetRouter(ibcRouter)
 
@@ -546,6 +568,7 @@ func New(
 		transferModule,
 		icaModule,
 		arkeoModule,
+		crosstransferModule,
 		// this line is used by starport scaffolding # stargate/app/appModule
 	)
 
@@ -576,6 +599,7 @@ func New(
 		paramstypes.ModuleName,
 		vestingtypes.ModuleName,
 		arkeomoduletypes.ModuleName,
+		crosstransfermoduletypes.ModuleName,
 		// this line is used by starport scaffolding # stargate/app/beginBlockers
 	)
 
@@ -601,6 +625,7 @@ func New(
 		upgradetypes.ModuleName,
 		vestingtypes.ModuleName,
 		arkeomoduletypes.ModuleName,
+		crosstransfermoduletypes.ModuleName,
 		// this line is used by starport scaffolding # stargate/app/endBlockers
 	)
 
@@ -631,6 +656,7 @@ func New(
 		upgradetypes.ModuleName,
 		vestingtypes.ModuleName,
 		arkeomoduletypes.ModuleName,
+		crosstransfermoduletypes.ModuleName,
 		// this line is used by starport scaffolding # stargate/app/initGenesis
 	)
 
@@ -661,6 +687,7 @@ func New(
 		ibc.NewAppModule(app.IBCKeeper),
 		transferModule,
 		arkeoModule,
+		crosstransferModule,
 		// this line is used by starport scaffolding # stargate/app/appModule
 	)
 	app.sm.RegisterStoreDecoders()
@@ -865,6 +892,7 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(arkeomoduletypes.ReserveName)
 	paramsKeeper.Subspace(arkeomoduletypes.ProviderName)
 	paramsKeeper.Subspace(arkeomoduletypes.ContractName)
+	paramsKeeper.Subspace(crosstransfermoduletypes.ModuleName)
 	// this line is used by starport scaffolding # stargate/app/paramSubspace
 
 	return paramsKeeper
